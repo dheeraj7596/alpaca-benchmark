@@ -320,8 +320,7 @@ if __name__ == "__main__":
                 attention_mask=batch['attention_mask'],
                 pad_token_id=tokenizer.pad_token_id,
                 do_sample=True,
-                # max_length=200,
-                max_new_tokens=20,
+                max_length=batch['input_ids'][0].shape[-1] + 20,
                 top_k=50,
             )
             gens = [tokenizer.decode(x, skip_special_tokens=True).split("### Response:")[1].strip() for x in
