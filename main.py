@@ -320,11 +320,12 @@ if __name__ == "__main__":
                 attention_mask=batch['attention_mask'],
                 pad_token_id=tokenizer.pad_token_id,
                 do_sample=True,
-                max_length=200,
+                # max_length=200,
+                max_new_tokens=20,
                 top_k=50,
             )
-            start_index = batch["input_ids"].shape[-1]
-            gens = [tokenizer.decode(x[start_index:], skip_special_tokens=True) for x in output_sequences]
+            gens = [tokenizer.decode(x, skip_special_tokens=True).split("### Response:")[1].strip() for x in
+                    output_sequences]
             outputs += gens
 
     metric = RougeMetric()
