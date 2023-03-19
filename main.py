@@ -245,6 +245,8 @@ if __name__ == "__main__":
     raw_datasets = load_dataset(extension, data_files=data_files)
     targets = list(raw_datasets["test"]["target"])
 
+    print("Loading config", flush=True)
+
     if args.config_name:
         config = AutoConfig.from_pretrained(args.config_name)
     elif args.model_name_or_path:
@@ -253,27 +255,29 @@ if __name__ == "__main__":
         config = CONFIG_MAPPING[args.model_type]()
         logger.warning("You are instantiating a new config instance from scratch.")
 
+    print("Loading tokenizer", flush=True)
+
     if args.tokenizer_name:
-        tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_name, use_fast=not args.use_slow_tokenizer)
+        tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_name, use_fast=False, padding_side="right")
     elif args.model_name_or_path:
-        tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, use_fast=not args.use_slow_tokenizer)
+        tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, use_fast=False, padding_side="right")
     else:
         raise ValueError(
             "You are instantiating a new tokenizer from scratch. This is not supported by this script."
             "You can do it from another script, save it, and load it from here, using --tokenizer_name."
         )
 
+    print("Loading model", flush=True)
+
     if args.model_name_or_path:
         model = AutoModelForCausalLM.from_pretrained(
             args.model_name_or_path,
-            from_tf=bool(".ckpt" in args.model_name_or_path),
+            from_tf=False,
             config=config,
         )
     else:
         logger.info("Training new model from scratch")
         model = AutoModelForCausalLM.from_config(config)
-
-    model.resize_token_embeddings(len(tokenizer))
 
     column_names = raw_datasets["test"].column_names
     text_column_name = "text" if "text" in column_names else column_names[0]
