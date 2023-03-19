@@ -243,6 +243,7 @@ if __name__ == "__main__":
     extension = args.test_file.split(".")[-1]
     data_files = {"test": args.test_file}
     raw_datasets = load_dataset(extension, data_files=data_files)
+    test_df = raw_datasets["test"].to_pandas()
     targets = list(raw_datasets["test"]["target"])
 
     print("Loading config", flush=True)
@@ -269,15 +270,13 @@ if __name__ == "__main__":
 
     print("Loading model", flush=True)
 
-    if args.model_name_or_path:
-        model = AutoModelForCausalLM.from_pretrained(
-            args.model_name_or_path,
-            from_tf=False,
-            config=config,
-        )
-    else:
-        logger.info("Training new model from scratch")
-        model = AutoModelForCausalLM.from_config(config)
+    model = AutoModelForCausalLM.from_pretrained(
+        args.model_name_or_path,
+        torch_dtype=torch.float16,
+        from_tf=False,
+        config=config,
+        device_map="auto"
+    )
 
     column_names = raw_datasets["test"].column_names
     text_column_name = "text" if "text" in column_names else column_names[0]
@@ -312,7 +311,7 @@ if __name__ == "__main__":
 
     print("Generating")
     model.eval()
-    all_outputs = []
+    outputs = []
     for step, batch in enumerate(eval_dataloader):
         print("Generating step", step)
         with torch.no_grad():
@@ -324,13 +323,15 @@ if __name__ == "__main__":
                 max_length=200,
                 top_k=50,
             )
-            outputs = [tokenizer.decode(x, skip_special_tokens=True) for x in output_sequences]
-            all_outputs += outputs
+            start_index = batch["input_ids"].shape[-1]
+            gens = [tokenizer.decode(x[start_index:], skip_special_tokens=True) for x in output_sequences]
+            outputs += gens
 
     metric = RougeMetric()
-    score_dic = metric.compute(all_outputs, targets)
+    score_dic = metric.compute(outputs, targets)
     print("Average rougeL F1score", score_dic["lexical/rouge_rougeL"][1])
+    test_df["gen"] = outputs
 
     if args.output_dir is not None:
         accelerator.wait_for_everyone()
-        pickle.dump(all_outputs, open(os.path.join(args.output_dir, "llama_gen.pkl", "wb")))
+        test_df.to_csv(os.path.join(args.output_dir, "df_gen.csv"), index=False)
