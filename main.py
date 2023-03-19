@@ -258,9 +258,9 @@ if __name__ == "__main__":
     print("Loading tokenizer", flush=True)
 
     if args.tokenizer_name:
-        tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_name, use_fast=False, padding_side="right")
+        tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_name, use_fast=False, padding_side="left")
     elif args.model_name_or_path:
-        tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, use_fast=False, padding_side="right")
+        tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, use_fast=False, padding_side="left")
     else:
         raise ValueError(
             "You are instantiating a new tokenizer from scratch. This is not supported by this script."
