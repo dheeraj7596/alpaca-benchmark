@@ -313,4 +313,6 @@ if __name__ == "__main__":
         accelerator.wait_for_everyone()
         with open(os.path.join(args.output_dir, "out.txt"), "w") as f:
             f.write("Accuracy " + str(correct / len(targets)))
+            f.write("\n")
             f.write("# Docs" + str(len(targets)))
+            f.write("\n")
