@@ -309,4 +309,8 @@ if __name__ == "__main__":
         if targets[i] == preds[i]:
             correct += 1
 
-    print("Accuracy", correct / len(targets))
+    if args.output_dir is not None:
+        accelerator.wait_for_everyone()
+        with open(os.path.join(args.output_dir, "out.txt"), "w") as f:
+            f.write("Accuracy " + str(correct / len(targets)))
+            f.write("# Docs" + str(len(targets)))
