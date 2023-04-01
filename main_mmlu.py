@@ -171,28 +171,6 @@ def parse_args():
     return args
 
 
-class RougeMetric():
-    def __init__(self) -> None:
-        super().__init__()
-        self._metric = load_metric("rouge")
-
-    def compute(
-            self,
-            generated_texts,
-            reference_texts,
-    ):
-        ref_texts = reference_texts
-        metric_results = self._metric.compute(
-            predictions=generated_texts, references=ref_texts, use_stemmer=True
-        )
-        score_keys = ["rouge1", "rouge2", "rougeL", "rougeLsum"]
-        metric_dict = {}
-        for rouge_type in score_keys:
-            rouge_score = metric_results[rouge_type].mid.fmeasure
-            metric_dict[f"lexical/rouge_{rouge_type}"] = (None, rouge_score)
-        return metric_dict
-
-
 if __name__ == "__main__":
     args = parse_args()
 
@@ -309,29 +287,21 @@ if __name__ == "__main__":
     )
     model, eval_dataloader = accelerator.prepare(model, eval_dataloader)
 
-    print("Generating")
+    print("Predicting")
     model.eval()
-    outputs = []
+    choices = ["A", "B", "C", "D"]
+    preds = []
+    ind_tensor = torch.tensor([319, 350, 315, 360]).to(accelerator.device)
     for step, batch in enumerate(eval_dataloader):
-        print("Generating step", step)
         with torch.no_grad():
-            output_sequences = model.generate(
-                input_ids=batch['input_ids'],
-                attention_mask=batch['attention_mask'],
-                pad_token_id=tokenizer.pad_token_id,
-                do_sample=True,
-                max_length=batch['input_ids'][0].shape[-1] + 20,
-                top_k=50,
-            )
-            gens = [tokenizer.decode(x, skip_special_tokens=True).split("### Response:")[1].strip() for x in
-                    output_sequences]
-            outputs += gens
+            output = model(**batch, return_dict=True)
+            mcq_logits = output.logits[:, -1, ind_tensor]
+            ans_inds = mcq_logits.argmax().detach().cpu().numpy()
+            for ans in ans_inds:
+                preds.append(choices[ans])
 
-    metric = RougeMetric()
-    score_dic = metric.compute(outputs, targets)
-    print("Average rougeL F1score", score_dic["lexical/rouge_rougeL"][1])
-    test_df["gen"] = outputs
+    metric = load_metric("accuracy")
 
-    if args.output_dir is not None:
-        accelerator.wait_for_everyone()
-        test_df.to_csv(os.path.join(args.output_dir, "df_gen.csv"), index=False)
+    accelerator.wait_for_everyone()
+    score_dic = metric.compute(references=targets, predictions=preds)
+    print("Accuracy", score_dic)
