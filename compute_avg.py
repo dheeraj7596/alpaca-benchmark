@@ -35,7 +35,7 @@ if __name__ == "__main__":
             acc = float(lines[0].strip().split()[-1])
             docs = int(lines[1].strip().split()[-1])
 
-            temp_acc += acc
+            temp_acc += acc * docs
             temp_total += docs
 
         total += temp_total
