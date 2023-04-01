@@ -21,8 +21,8 @@ if __name__ == "__main__":
     }
 
     base_path = "/home/dheeraj/alpaca-benchmark/output/mmlu"
-    total = 0
-    acc = 0
+    total_docs = 0
+    total_acc = 0
     for key in dic:
         print(key)
         temp_acc = 0
@@ -38,11 +38,11 @@ if __name__ == "__main__":
             temp_acc += acc * docs
             temp_total += docs
 
-        total += temp_total
-        acc += temp_acc
+        total_docs += temp_total
+        total_acc += temp_acc
 
         print("Avg acc", temp_acc / temp_total)
         print("*" * 80)
 
-    print("Overall Avg acc", acc / total)
+    print("Overall Avg acc", total_acc / total_docs)
     print("*" * 80)
