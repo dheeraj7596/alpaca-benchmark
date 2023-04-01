@@ -23,11 +23,10 @@ https://huggingface.co/models?filter=text-generation
 # You can also adapt this script on your own causal language modeling task. Pointers for this are left as comments.
 
 import argparse
-import pandas as pd
 import logging
 import os
 import torch
-import pickle
+from os import walk
 
 import datasets
 from datasets import load_metric, load_dataset
@@ -65,7 +64,10 @@ def parse_args():
         help="The configuration name of the dataset to use (via the datasets library).",
     )
     parser.add_argument(
-        "--test_file", type=str, default=None, required=True, help="A csv or a json file containing the test data."
+        "--test_file", type=str, default=None, required=False, help="A csv or a json file containing the test data."
+    )
+    parser.add_argument(
+        "--test_dir", type=str, default=None, required=True, help="A csv or a json file containing the test data."
     )
     parser.add_argument(
         "--model_name_or_path",
@@ -171,6 +173,59 @@ def parse_args():
     return args
 
 
+def run_model(model, tokenizer, raw_datasets, output_dir):
+    def tokenize_function(examples):
+        res = tokenizer(examples[text_column_name],
+                        truncation=True,
+                        padding="longest",
+                        max_length=tokenizer.model_max_length,
+                        )
+        return res
+
+    targets = list(raw_datasets["test"]["target"])
+
+    column_names = raw_datasets["test"].column_names
+    text_column_name = "text" if "text" in column_names else column_names[0]
+    with accelerator.main_process_first():
+        lm_datasets = raw_datasets.map(
+            tokenize_function,
+            batched=True,
+            num_proc=args.preprocessing_num_workers,
+            remove_columns=column_names,
+            load_from_cache_file=not args.overwrite_cache,
+            desc="Running tokenizer on dataset",
+        )
+    test_dataset = lm_datasets["test"]
+    data_collator = DataCollatorForSeq2Seq(tokenizer, model, padding='longest')
+    eval_dataloader = DataLoader(
+        test_dataset, collate_fn=data_collator, batch_size=args.per_device_eval_batch_size
+    )
+    model, eval_dataloader = accelerator.prepare(model, eval_dataloader)
+    model.eval()
+    choices = ["A", "B", "C", "D"]
+    preds = []
+    ind_tensor = torch.tensor([319, 350, 315, 360]).to(accelerator.device)
+    for step, batch in enumerate(eval_dataloader):
+        with torch.no_grad():
+            output = model(**batch, return_dict=True)
+            mcq_logits = output.logits[:, -1, ind_tensor]
+            ans_inds = mcq_logits.argmax(dim=-1).detach().cpu().numpy()
+            for ans in ans_inds:
+                preds.append(choices[ans])
+    accelerator.wait_for_everyone()
+    correct = 0
+    for i in range(len(targets)):
+        if targets[i] == preds[i]:
+            correct += 1
+
+    accelerator.wait_for_everyone()
+    with open(os.path.join(output_dir, "out.txt"), "w") as f:
+        f.write("Accuracy " + str(correct / len(targets)))
+        f.write("\n")
+        f.write("# Docs" + str(len(targets)))
+        f.write("\n")
+
+
 if __name__ == "__main__":
     args = parse_args()
 
@@ -218,12 +273,6 @@ if __name__ == "__main__":
     #
     # In distributed training, the .from_pretrained methods guarantee that only one local process can concurrently
     # download model & vocab.
-    extension = args.test_file.split(".")[-1]
-    data_files = {"test": args.test_file}
-    raw_datasets = load_dataset(extension, data_files=data_files)
-    test_df = raw_datasets["test"].to_pandas()
-    targets = list(raw_datasets["test"]["target"])
-
     print("Loading config", flush=True)
 
     if args.config_name:
@@ -258,61 +307,16 @@ if __name__ == "__main__":
         device_map="auto"
     )
 
-    column_names = raw_datasets["test"].column_names
-    text_column_name = "text" if "text" in column_names else column_names[0]
+    topics = []
+    for (dirpath, dirnames, filenames) in walk(os.path.join(args.test_dir)):
+        for filename in filenames:
+            extension = filename.strip().split(".")[-1]
+            if extension == "csv":
+                topic = filename.strip().split("_prompt.csv")[0]
+                print("Running for", topic, flush=True)
+                output_dir = os.makedirs(os.path.join(args.output_dir, topic), exist_ok=True)
 
-
-    def tokenize_function(examples):
-        res = tokenizer(examples[text_column_name],
-                        truncation=True,
-                        padding="longest",
-                        max_length=tokenizer.model_max_length,
-                        )
-        return res
-
-
-    with accelerator.main_process_first():
-        lm_datasets = raw_datasets.map(
-            tokenize_function,
-            batched=True,
-            num_proc=args.preprocessing_num_workers,
-            remove_columns=column_names,
-            load_from_cache_file=not args.overwrite_cache,
-            desc="Running tokenizer on dataset",
-        )
-
-    test_dataset = lm_datasets["test"]
-    data_collator = DataCollatorForSeq2Seq(tokenizer, model, padding='longest')
-
-    eval_dataloader = DataLoader(
-        test_dataset, collate_fn=data_collator, batch_size=args.per_device_eval_batch_size
-    )
-    model, eval_dataloader = accelerator.prepare(model, eval_dataloader)
-
-    print("Predicting")
-    model.eval()
-    choices = ["A", "B", "C", "D"]
-    preds = []
-    ind_tensor = torch.tensor([319, 350, 315, 360]).to(accelerator.device)
-    for step, batch in enumerate(eval_dataloader):
-        with torch.no_grad():
-            output = model(**batch, return_dict=True)
-            mcq_logits = output.logits[:, -1, ind_tensor]
-            ans_inds = mcq_logits.argmax(dim=-1).detach().cpu().numpy()
-            for ans in ans_inds:
-                preds.append(choices[ans])
-
-    accelerator.wait_for_everyone()
-
-    correct = 0
-    for i in range(len(targets)):
-        if targets[i] == preds[i]:
-            correct += 1
-
-    if args.output_dir is not None:
-        accelerator.wait_for_everyone()
-        with open(os.path.join(args.output_dir, "out.txt"), "w") as f:
-            f.write("Accuracy " + str(correct / len(targets)))
-            f.write("\n")
-            f.write("# Docs" + str(len(targets)))
-            f.write("\n")
+                data_files = {"test": filename}
+                raw_datasets = load_dataset(extension, data_files=data_files)
+                run_model(model, tokenizer, raw_datasets, output_dir)
+        break
