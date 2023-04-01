@@ -299,12 +299,14 @@ if __name__ == "__main__":
             output = model(**batch, return_dict=True)
             mcq_logits = output.logits[:, -1, ind_tensor]
             ans_inds = mcq_logits.argmax(dim=-1).detach().cpu().numpy()
-            print(ans_inds)
             for ans in ans_inds:
                 preds.append(choices[ans])
 
-    metric = load_metric("accuracy")
-
     accelerator.wait_for_everyone()
-    score_dic = metric.compute(references=targets, predictions=preds)
-    print("Accuracy", score_dic)
+
+    correct = 0
+    for i in range(len(targets)):
+        if targets[i] == preds[i]:
+            correct += 1
+
+    print("Accuracy", correct / len(targets))
