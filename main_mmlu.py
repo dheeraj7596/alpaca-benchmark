@@ -237,9 +237,11 @@ if __name__ == "__main__":
     print("Loading tokenizer", flush=True)
 
     if args.tokenizer_name:
-        tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_name, use_fast=False, padding_side="left")
+        tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_name, use_fast=False, padding_side="left",
+                                                  truncation_side="left")
     elif args.model_name_or_path:
-        tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, use_fast=False, padding_side="left")
+        tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, use_fast=False, padding_side="left",
+                                                  truncation_side="left")
     else:
         raise ValueError(
             "You are instantiating a new tokenizer from scratch. This is not supported by this script."
@@ -296,7 +298,8 @@ if __name__ == "__main__":
         with torch.no_grad():
             output = model(**batch, return_dict=True)
             mcq_logits = output.logits[:, -1, ind_tensor]
-            ans_inds = mcq_logits.argmax().detach().cpu().numpy()
+            ans_inds = mcq_logits.argmax(dim=-1).detach().cpu().numpy()
+            print(ans_inds)
             for ans in ans_inds:
                 preds.append(choices[ans])
 
