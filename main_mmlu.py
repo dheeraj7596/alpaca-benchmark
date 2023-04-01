@@ -222,7 +222,7 @@ def run_model(model, tokenizer, raw_datasets, output_dir):
     with open(os.path.join(output_dir, "out.txt"), "w") as f:
         f.write("Accuracy " + str(correct / len(targets)))
         f.write("\n")
-        f.write("# Docs" + str(len(targets)))
+        f.write("# Docs " + str(len(targets)))
         f.write("\n")
 
 
@@ -308,15 +308,15 @@ if __name__ == "__main__":
     )
 
     topics = []
-    for (dirpath, dirnames, filenames) in walk(os.path.join(args.test_dir)):
+    for (dirpath, dirnames, filenames) in walk(args.test_dir):
         for filename in filenames:
             extension = filename.strip().split(".")[-1]
             if extension == "csv":
                 topic = filename.strip().split("_prompt.csv")[0]
+                output_dir = os.path.join(args.output_dir, topic)
+                os.makedirs(output_dir, exist_ok=True)
                 print("Running for", topic, flush=True)
-                output_dir = os.makedirs(os.path.join(args.output_dir, topic), exist_ok=True)
-
-                data_files = {"test": filename}
+                data_files = {"test": os.path.join(args.test_dir, filename)}
                 raw_datasets = load_dataset(extension, data_files=data_files)
                 run_model(model, tokenizer, raw_datasets, output_dir)
         break
